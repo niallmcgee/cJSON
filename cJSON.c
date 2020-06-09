@@ -154,6 +154,7 @@ typedef struct internal_hooks
     void *(CJSON_CDECL *allocate)(size_t size);
     void (CJSON_CDECL *deallocate)(void *pointer);
     void *(CJSON_CDECL *reallocate)(void *pointer, size_t size);
+    double (CJSON_CDECL *stringtodouble)(const char *nptr, char **endptr);
 } internal_hooks;
 
 #if defined(_MSC_VER)
@@ -170,16 +171,21 @@ static void * CJSON_CDECL internal_realloc(void *pointer, size_t size)
 {
     return realloc(pointer, size);
 }
+static double CJSON_CDECL internal_strtod(const char *nptr, char **endptr)
+{
+    return strtod(nptr, endptr);
+}
 #else
 #define internal_malloc malloc
 #define internal_free free
 #define internal_realloc realloc
+#define internal_strtod strtod
 #endif
 
 /* strlen of character literals resolved at compile time */
 #define static_strlen(string_literal) (sizeof(string_literal) - sizeof(""))
 
-static internal_hooks global_hooks = { internal_malloc, internal_free, internal_realloc };
+static internal_hooks global_hooks = { internal_malloc, internal_free, internal_realloc, internal_strtod };
 
 static unsigned char* cJSON_strdup(const unsigned char* string, const internal_hooks * const hooks)
 {
@@ -210,6 +216,7 @@ CJSON_PUBLIC(void) cJSON_InitHooks(cJSON_Hooks* hooks)
         global_hooks.allocate = malloc;
         global_hooks.deallocate = free;
         global_hooks.reallocate = realloc;
+        global_hooks.stringtodouble = strtod;
         return;
     }
 
@@ -230,6 +237,12 @@ CJSON_PUBLIC(void) cJSON_InitHooks(cJSON_Hooks* hooks)
     if ((global_hooks.allocate == malloc) && (global_hooks.deallocate == free))
     {
         global_hooks.reallocate = realloc;
+    }
+
+    global_hooks.stringtodouble = strtod;
+    if (hooks->strtod_fn != NULL)
+    {
+        global_hooks.stringtodouble = hooks->strtod_fn;
     }
 }
 
@@ -346,7 +359,7 @@ static cJSON_bool parse_number(cJSON * const item, parse_buffer * const input_bu
 loop_end:
     number_c_string[i] = '\0';
 
-    number = strtod((const char*)number_c_string, (char**)&after_end);
+    number = global_hooks.stringtodouble((const char*)number_c_string, (char**)&after_end);
     if (number_c_string == after_end)
     {
         return false; /* parse_error */

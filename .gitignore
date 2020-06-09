@@ -10,6 +10,7 @@ tags
 build/
 cJSON_test
 cJSON_test_utils
+cJSON_strtod_test
 libcjson.so.*
 libcjson_utils.so.*
 *.orig
