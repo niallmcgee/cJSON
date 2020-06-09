@@ -297,6 +297,76 @@ typedef struct
 /* get a pointer to the buffer at the position */
 #define buffer_at_offset(buffer) ((buffer)->content + (buffer)->offset)
 
+#ifdef USE_OWN_STRTOD
+/* Parse input text with the original cJSON logic - use if strtod() is broken in your libc */
+static double string2number (char * input_number, char ** after_end)
+{
+    double n = 0;
+    double sign = 1;
+    double scale = 0;
+    int subscale = 0;
+    int signsubscale = 1;
+
+    /* Has sign? */
+    if (*input_number == '-')
+    {
+        sign = -1;
+        input_number++;
+    }
+    /* is zero */
+    if (*input_number == '0')
+    {
+        input_number++;
+    }
+    /* Number? */
+    if ((*input_number >= '1') && (*input_number <= '9'))
+    {
+        do
+        {
+            n = (n * 10.0) + (*input_number++ - '0');
+        }
+        while ((*input_number >= '0') && (*input_number<='9'));
+    }
+    /* Fractional part? */
+    if ((*input_number == '.') && (input_number[1] >= '0') && (input_number[1] <= '9'))
+    {
+        input_number++;
+        do
+        {
+            n = (n  *10.0) + (*input_number++ - '0');
+            scale--;
+        } while ((*input_number >= '0') && (*input_number <= '9'));
+    }
+    /* Exponent? */
+    if ((*input_number == 'e') || (*input_number == 'E'))
+    {
+        input_number++;
+        /* With sign? */
+        if (*input_number == '+')
+        {
+            input_number++;
+        }
+        else if (*input_number == '-')
+        {
+            signsubscale = -1;
+            input_number++;
+        }
+        /* Number? */
+        while ((*input_number>='0') && (*input_number<='9'))
+        {
+            subscale = (subscale * 10) + (*input_number++ - '0');
+        }
+    }
+
+    *after_end = input_number;
+
+    /* number = +/- number.fraction * 10^+/- exponent */
+    n = sign * n * pow(10.0, (scale + subscale * signsubscale));
+
+    return n;
+}
+#endif
+
 /* Parse the input text to generate a number, and populate the result into item. */
 static cJSON_bool parse_number(cJSON * const item, parse_buffer * const input_buffer)
 {
@@ -346,7 +416,11 @@ static cJSON_bool parse_number(cJSON * const item, parse_buffer * const input_bu
 loop_end:
     number_c_string[i] = '\0';
 
+#ifdef USE_OWN_STRTOD
+    number = string2number((char*)number_c_string, (char**)&after_end);
+#else
     number = strtod((const char*)number_c_string, (char**)&after_end);
+#endif
     if (number_c_string == after_end)
     {
         return false; /* parse_error */
